@@ -66,3 +66,31 @@ DART:
   based: CIL
   description: random testing and direct execution
 ```
+### Tool explanation 
+
+How the tool is articulated ? 
+
+We have 2 config files to see if we need to change anything on the information within the image. 
+One file is the folder tool and is named tools.json. This Json has all the tool references. 
+One Tool is represented as the following : 
+{
+  "name": ,
+  "since": , 
+  "description": ,
+  "url": ,
+  "github": ,
+  "type": ,
+  "uses":[""],
+  "affilications":["",""],
+  "os": ,
+  "license": ,
+  "languages": ["",""],
+  "api": ,
+  "technique": ,
+  "authors": ,
+}
+
+The other file is config and this is describing the links between the tools in tools.json. 
+
+This help keeping track on the timeline interaction between tools. 
+
