@@ -3,6 +3,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.io.File
+import kotlin.math.max
+import kotlin.math.min
 
 const val STEP: Int = 20
 
@@ -73,6 +75,11 @@ class ColorScheme {
         }
     }
 
+    /**
+     * Language colors extracted from Linguist project.
+     *
+     * See [`languages.yml`](https://github.com/github/linguist/blob/master/lib/linguist/languages.yml) file.
+     */
     fun getLanguageColor(language: String): String {
         return when (language) {
             ".NET" -> "#178600"
@@ -99,31 +106,52 @@ class Config(val tools: List<Tool>)
 
 @Serializable
 open class Tool(
+    /** Start year. E.g. 2000. */
     val since: Int = 1994,
     val type: ElementType? = null,
     val name: String,
+    /** Tool name. E.g. “DART”. */
     val id: String = name,
+    /** Tool authors. E.g. “P. Godefroid (B)\nK. Sen (I)”. */
     val authors: List<String> = ArrayList(),
+    /** Tool description. E.g. “Random testing and direct execution”. */
     val description: String = "",
+    /** Target language. E.g. “C”. */
     val languages: List<String> = ArrayList(),
+    /** Tools used by the tool. E.g. “Z3” for Z3 solver used to solve paths. */
     val uses: List<String> = ArrayList(),
     val based: List<String> = ArrayList(),
     val ir: List<String> = ArrayList(),
 )
 
+/**
+ * Graphical element representing a tool or article.
+ */
 data class ToolPicture(
     val tool: Tool,
     val toolMap: Map<String, ToolPicture>,
     var position: Vector = Vector(0.0, 0.0),
     var size: Vector = Vector(100.0, 150.0),
-    var descriptions: List<String> = listOf(),
+    /** Tool name. E.g. “DART”. */
     var names: List<String> = listOf(),
+    /** Tool description. E.g. “Random testing and direct execution”. */
+    var descriptions: List<String> = listOf(),
 ) {
+    private val padding = 10.0
+    private val nameHeight = 20.0
+    private val textHeight = 14.0
+
+    private val paperBorderColor = "#888888"
 
     init {
-        descriptions = if (tool.description == "") listOf() else tool.description.split("\n")
         names = if (tool.name == "") listOf() else tool.name.split("\n")
-        size = Vector(120.0, 40.0 + descriptions.size * 14.0 + names.size * 20.0)
+        descriptions = if (tool.description == "") listOf() else tool.description.split("\n")
+        size = Vector(
+            120.0,
+            padding * 2 +
+                    (descriptions.size + 1) * textHeight +
+                    names.size * nameHeight
+        )
     }
 
     private fun addText(
@@ -138,35 +166,52 @@ data class ToolPicture(
         ), text
     )
 
+    /** Get total height of all bottom elements: tools and authors. */
+    fun getBottomHeight(): Double {
+        return (tool.uses + tool.based + tool.ir).size * 25 +
+                (if (tool.authors.isNotEmpty()) 5.0 else 0.0) +
+                (tool.authors).size * textHeight
+    }
+
+    /** Get total height of all top language element. */
+    fun getTopHeight(): Double {
+        return if (tool.languages.isNotEmpty()) 25.0 else 0.0
+    }
+
     fun draw(xml: XML, scheme: ColorScheme, toolMap: Map<String, ToolPicture>) {
 
         if (position.x == 0.0) return
 
-        var y = 10.0
-        val stroke = if (tool.type == ElementType.PAPER) "#888888" else "none"
+        val stroke = if (tool.type == ElementType.PAPER) paperBorderColor else "none"
 
         xml.add(
-            "rect", mapOf(
-                "fill" to scheme.getColor(tool.type), "stroke" to stroke, "rx" to 5.0
-            ) + position.toMap() + size.toSizeMap()
+            "rect",
+            mapOf(
+                "fill" to scheme.getColor(tool.type),
+                "stroke" to stroke,
+                "rx" to 5.0) +
+                    position.toMap() +
+                    size.toSizeMap()
         )
+        var y = padding
+
         for (text in names) {
-            y += 20.0
+            y += nameHeight
             addText(
                 xml,
                 text,
-                position + Vector(10.0, y),
+                position + Vector(padding, y),
                 letterSpacing = if (tool.name.uppercase() == tool.name) 1.8 else 0.0,
                 fontSize = 20.0,
             )
         }
-        addText(xml, tool.since.toString(), position + Vector(10.0, y + 14.0))
+        y += textHeight
+        addText(xml, tool.since.toString(), position + Vector(padding, y))
         for (description in descriptions) {
-            addText(xml, description, position + Vector(10.0, y + 26.0))
-            y += 14.0
+            y += textHeight
+            addText(xml, description, position + Vector(padding, y))
         }
-
-        y = size.y + 5.0
+        y += padding
 
         if (tool.languages.isNotEmpty()) {
             var x = 0.0
@@ -195,17 +240,21 @@ data class ToolPicture(
 
             for (use in tool.uses + tool.based + tool.ir) {
 
+                y += 5.0
+
                 val fill = toolMap[use]?.tool?.type?.let { scheme.getColor(it) } ?: "#E0DAD5"
+                /** Very rough estimate of a text width. */
                 val width = use.length * 6.0 + 20.0
 
                 xml.add(
-                    "rect", (position + Vector(0.0, y)).toMap() + Vector(width, 20.0).toSizeMap() + mapOf(
-                        "fill" to fill, "rx" to 2.5
-                    )
+                    "rect",
+                    (position + Vector(0.0, y)).toMap() +
+                            Vector(width, 20.0).toSizeMap() +
+                            mapOf("fill" to fill, "rx" to 2.5)
                 )
                 xml.add(
                     "text",
-                    (position + Vector(width / 2.0, y + 14.0)).toMap() + mapOf(
+                    (position + Vector(width / 2.0, y + textHeight)).toMap() + mapOf(
                         "font-size" to 12.0,
                         "font-family" to "Roboto",
                         "font-weight" to 300,
@@ -213,30 +262,56 @@ data class ToolPicture(
                     ),
                     use,
                 )
-                y += 25.0
+                y += 20.0
             }
         }
-        for (author in tool.authors) {
-            y += 12
-            addText(xml, author, position + Vector(0.0, y))
+        if (tool.authors.isNotEmpty()) {
+            y += 5.0
+            for (author in tool.authors) {
+                y += textHeight
+                addText(xml, author, position + Vector(0.0, y))
+            }
         }
         size.y = y
     }
+
+    /** Put this tool below the specified tool. */
+    fun putBelow(tool: ToolPicture) {
+        position.x = tool.position.x
+        val y = tool.position.y +
+                tool.size.y +
+                tool.getBottomHeight() +
+                10.0 +
+                getTopHeight()
+        position.y = max(position.y, y)
+    }
+
+    /** Put this tool above the specified tool. */
+    fun putAbove(tool: ToolPicture) {
+        position.x = tool.position.x
+        val y = tool.position.y -
+                size.y -
+                getBottomHeight() -
+                10.0 -
+                tool.getTopHeight()
+        position.y = min(position.y, y)
+    }
 }
 
+/**
+ * Shape around all tools with the same affiliation.
+ */
 class AffiliationPicture {
 
     private val padding = Vector(20.0, 20.0)
 
-    private var start = Vector(3000.0, 3000.0)
-    private var end = Vector(0.0, 0.0)
+    private var start = Vector(Double.MAX_VALUE, Double.MAX_VALUE)
+    private var end = Vector(Double.MIN_VALUE, Double.MIN_VALUE)
 
+    /** Add tool with this affiliation. */
     fun add(toolPicture: ToolPicture) {
-        start.x = start.x.coerceAtMost(toolPicture.position.x)
-        start.y = start.y.coerceAtMost(toolPicture.position.y)
-        val toolEnd = (toolPicture.position + toolPicture.size)
-        end.x = end.x.coerceAtLeast(toolEnd.x)
-        end.y = end.y.coerceAtLeast(toolEnd.y)
+        start.coerceAtMost(toolPicture.position - Vector(0.0, toolPicture.getTopHeight()))
+        end.coerceAtLeast(toolPicture.position + toolPicture.size + Vector(0.0, toolPicture.getBottomHeight()))
     }
 
     fun draw(xml: XML) = xml.add(
@@ -273,10 +348,11 @@ private data class Timeline(val tools: List<Tool>, val scheme: ColorScheme, val 
                 }
 
             } else if (parts[0] == "v") {
-                val tool = toolMap[parts[1]] ?: throw NotImplementedError(parts[1])
                 for (i in 2 until parts.size) {
+                    val tool = toolMap[parts[i - 1]] ?: throw NotImplementedError(parts[i - 1])
                     val tool2 = toolMap[parts[i]] ?: throw NotImplementedError(parts[i])
-                    tool2.position.x = tool.position.x
+
+                    tool2.putBelow(tool)
                 }
 
             } else if (parts.size == 2) {
@@ -293,8 +369,8 @@ private data class Timeline(val tools: List<Tool>, val scheme: ColorScheme, val 
                 } else {
                     when (parts[1]) {
                         "<-" -> tool2.position.x = tool.position.x - tool2.size.x - STEP
-                        "v" -> tool2.position.x = tool.position.x
-                        "^" -> tool2.position.x = tool.position.x
+                        "v" -> tool2.putBelow(tool)
+                        "^" -> tool2.putAbove(tool)
                         "|" -> tool2.position.y = tool.position.y
                     }
                 }
@@ -315,7 +391,6 @@ private data class Timeline(val tools: List<Tool>, val scheme: ColorScheme, val 
 
     fun draw(xml: XML, filePath: String) {
         for (affiliationPictures in affiliations.keys) {
-            println("<$affiliationPictures>")
             var polygon: Polygon? = null
             for (affiliationPicture in affiliations[affiliationPictures]!!) {
                 affiliationPicture.draw(xml)
